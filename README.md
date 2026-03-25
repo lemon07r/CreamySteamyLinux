@@ -51,12 +51,23 @@ gcc -shared -fPIC -O2 -o libsteam_api.so proxy.c -ldl
 
 This is the recommended method. It works with all games and requires no special Steam launch options.
 
-1. Find `libsteam_api.so` in your game's directory (e.g. `GameName_Data/Plugins/`)
-2. Back up the original: `mv libsteam_api.so libsteam_api_o.so`
-3. Copy the proxy in its place: `cp libsteam_api.so <game plugins dir>/libsteam_api.so`
-4. Copy `cream_api.ini` to the same directory as the proxy `libsteam_api.so`
-5. Edit `cream_api.ini` with your game's DLC IDs (or use `fetch_dlc.sh` to generate it)
-6. Launch the game normally — no special launch options needed!
+1. Generate `cream_api.ini` for your game:
+   ```bash
+   ./fetch_dlc.sh <APP_ID>
+   ```
+   Replace `<APP_ID>` with your game's Steam App ID (find it on the game's Steam store page URL).
+
+2. Find `libsteam_api.so` in your game's directory (e.g. `GameName_Data/Plugins/`)
+
+3. Back up the original: `mv libsteam_api.so libsteam_api_o.so`
+
+4. Copy the proxy and config to the same directory:
+   ```bash
+   cp libsteam_api.so <game plugins dir>/libsteam_api.so
+   cp cream_api.ini <game plugins dir>/cream_api.ini
+   ```
+
+5. Launch the game normally — no special launch options needed!
 
 To restore the original, just rename `libsteam_api_o.so` back to `libsteam_api.so`.
 
@@ -64,17 +75,23 @@ To restore the original, just rename `libsteam_api_o.so` back to `libsteam_api.s
 
 Only use this if Method 1 doesn't work for your game.
 
-1. Copy these files to your game's root directory:
+1. Generate `cream_api.ini` for your game:
+   ```bash
+   ./fetch_dlc.sh <APP_ID>
+   ```
+   Replace `<APP_ID>` with your game's Steam App ID.
+
+2. Copy these files to your game's root directory:
    - `lib64CreamySteamy.so` (and/or `lib32CreamySteamy.so`)
    - `creamy.sh`
-   - `cream_api.ini` (edit with your game's DLC IDs)
+   - `cream_api.ini` (generated in step 1)
 
-2. In Steam: Right-click game → Properties → Launch Options:
+3. In Steam: Right-click game → Properties → Launch Options:
    ```
    sh ./creamy.sh %command%
    ```
 
-3. Launch the game!
+4. Launch the game!
 
 ## cream_api.ini Format
 
@@ -86,16 +103,6 @@ Only use this if Method 1 doesn't work for your game.
 12345 = DLC Name One
 67890 = DLC Name Two
 ```
-
-## Auto-fetching DLC IDs
-
-Run the included helper to auto-populate `cream_api.ini` for any Steam game:
-
-```bash
-./fetch_dlc.sh 1385380
-```
-
-(Replace `1385380` with your game's Steam App ID)
 
 ## Static Analysis
 
