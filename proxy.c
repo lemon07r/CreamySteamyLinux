@@ -96,12 +96,12 @@ static void find_config_path(char *out, size_t outsize) {
             }
             /* Try two dirs up (game root) */
             *slash = 0;
-            slash = strrchr(buf, '/');
-            if (slash) {
-                *slash = 0;
-                slash = strrchr(buf, '/');
-                if (slash) {
-                    strcpy(slash+1, "cream_api.ini");
+            char *slash2 = strrchr(buf, '/');
+            if (slash2) {
+                *slash2 = 0;
+                char *slash3 = strrchr(buf, '/');
+                if (slash3) {
+                    strcpy(slash3+1, "cream_api.ini");
                     if (access(buf, R_OK) == 0) {
                         strncpy(out, buf, outsize);
                         return;
@@ -162,8 +162,8 @@ static void load_config(void) {
             char *eq = strchr(s, '=');
             if (eq) {
                 *eq = '\0';
-                char *id_str = trim(s);
-                char *name = trim(eq + 1);
+                const char *id_str = trim(s);
+                const char *name = trim(eq + 1);
                 uint32_t id = (uint32_t)strtoul(id_str, NULL, 10);
                 if (id > 0) {
                     g_dlcs[g_dlc_count].app_id = id;
@@ -279,8 +279,10 @@ bool SteamAPI_ISteamApps_BGetDLCDataByIndex(void *self, int iDLC, AppId_t *pAppI
     if (iDLC >= 0 && iDLC < g_dlc_count) {
         *pAppID = g_dlcs[iDLC].app_id;
         *pbAvailable = true;
-        strncpy(pchName, g_dlcs[iDLC].name, cchNameBufferSize - 1);
-        pchName[cchNameBufferSize - 1] = '\0';
+        if (cchNameBufferSize > 0) {
+            strncpy(pchName, g_dlcs[iDLC].name, (size_t)(cchNameBufferSize - 1));
+            pchName[cchNameBufferSize - 1] = '\0';
+        }
         LOG("BGetDLCDataByIndex(%d) -> %u '%s'", iDLC, g_dlcs[iDLC].app_id, g_dlcs[iDLC].name);
         return true;
     }

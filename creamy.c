@@ -118,8 +118,8 @@ static void load_config(void) {
             char *eq = strchr(s, '=');
             if (eq) {
                 *eq = '\0';
-                char *id_str = trim(s);
-                char *name = trim(eq + 1);
+                const char *id_str = trim(s);
+                const char *name = trim(eq + 1);
                 uint32_t id = (uint32_t)strtoul(id_str, NULL, 10);
                 if (id > 0) {
                     g_dlcs[g_dlc_count].app_id = id;
@@ -269,7 +269,8 @@ static bool hook_BGetDLCDataByIndex(void *self, int iDLC, uint32_t *pAppID, bool
     *pAppID = g_dlcs[iDLC].app_id;
     *pbAvailable = true;
     size_t slen = strlen(g_dlcs[iDLC].name);
-    if (slen >= (size_t)cchNameBufferSize) slen = cchNameBufferSize - 1;
+    if (cchNameBufferSize > 0 && slen >= (size_t)cchNameBufferSize)
+        slen = (size_t)(cchNameBufferSize - 1);
     memcpy(pchName, g_dlcs[iDLC].name, slen);
     pchName[slen] = '\0';
     LOG("ISteamApps::BGetDLCDataByIndex(%d) -> %u '%s'", iDLC, g_dlcs[iDLC].app_id, g_dlcs[iDLC].name);
@@ -300,7 +301,7 @@ static void *hook_steamapps(void *real_apps) {
     g_fake_steamapps_obj.vtable = g_fake_steamapps_vtable;
     g_steamapps_hooked = true;
 
-    LOG("ISteamApps hooked successfully (real=%p, fake=%p)", real_apps, &g_fake_steamapps_obj);
+    LOG("ISteamApps hooked successfully (real=%p, fake=%p)", real_apps, (void *)&g_fake_steamapps_obj);
     return &g_fake_steamapps_obj;
 }
 
@@ -406,7 +407,8 @@ bool SteamAPI_ISteamApps_BGetDLCDataByIndex(void *self, int iDLC, uint32_t *pApp
     *pAppID = g_dlcs[iDLC].app_id;
     *pbAvailable = true;
     size_t slen = strlen(g_dlcs[iDLC].name);
-    if (slen >= (size_t)cchNameBufferSize) slen = cchNameBufferSize - 1;
+    if (cchNameBufferSize > 0 && slen >= (size_t)cchNameBufferSize)
+        slen = (size_t)(cchNameBufferSize - 1);
     memcpy(pchName, g_dlcs[iDLC].name, slen);
     pchName[slen] = '\0';
     LOG("SteamAPI_ISteamApps_BGetDLCDataByIndex(%d) -> %u", iDLC, g_dlcs[iDLC].app_id);
@@ -582,6 +584,6 @@ void *dlsym(void *handle, const char *name) {
 /* Anti-debugger bypass                                                       */
 /* ========================================================================= */
 
-long ptrace(int request, int pid, void *addr, void *data) {
+long ptrace(int request, int pid, const void *addr, const void *data) {
     return 0;
 }
