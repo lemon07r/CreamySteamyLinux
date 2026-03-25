@@ -2,6 +2,30 @@
 
 A lightweight, pure-C Steam DLC unlocker for native Linux Steam games.
 
+## Why CreamySteamyLinux?
+
+On Windows, tools like [CreamInstaller](https://github.com/FroggMaster/CreamInstaller) make DLC unlocking effortless — but they don't work on Linux. The existing Linux alternatives ([creamlinux](https://github.com/anticitizn/creamlinux), [CreamTripApiLinux](https://github.com/KVarnitZ/CreamTripApiLinux)) are outdated, unmaintained, and only support the `LD_PRELOAD` approach, which **fails for many games** — particularly those with launchers (like Unity's "dowser" launcher) that spawn child processes without propagating environment variables.
+
+CreamySteamyLinux was built from scratch in pure C to solve these problems:
+
+| Problem | Old tools | CreamySteamyLinux |
+|---|---|---|
+| Games with launchers (e.g. Unity dowser) | ❌ LD_PRELOAD doesn't propagate to child processes | ✅ Proxy replacement works transparently — no env vars needed |
+| C++ runtime dependency | ❌ creamlinux requires libstdc++, spdlog, etc. | ✅ Pure C — only libc and libdl |
+| Binary size | ❌ ~3.6MB (creamlinux) | ✅ ~30KB (LD_PRELOAD) / ~300KB (proxy) |
+| Maintenance | ❌ Last updated 2+ years ago | ✅ Actively maintained |
+| Steam API coverage | ❌ Hooks only vtable-based interface calls | ✅ Proxy forwards all 1100+ Steam API functions, overrides 8 DLC-related flat API functions |
+| Static analysis | ❌ None | ✅ Tested with gcc -fanalyzer, cppcheck, flawfinder, clang-tidy, scan-build |
+
+### How it was built
+
+The proxy approach works the same way CreamInstaller does on Windows (DLL proxying), adapted for Linux shared objects:
+
+1. **Export extraction** — All exported symbols from the game's real `libsteam_api.so` are extracted using `nm -D`
+2. **Code generation** — A Python script generates `proxy.c` with assembly trampolines that forward every function call to the real library (loaded as `libsteam_api_o.so` via `dlopen`)
+3. **DLC overrides** — 8 DLC-related functions (`BIsDlcInstalled`, `BIsSubscribedApp`, `GetDLCCount`, `BGetDLCDataByIndex`, etc.) are replaced with implementations that read `cream_api.ini` and report all listed DLCs as owned
+4. **Drop-in replacement** — The compiled proxy is a direct replacement for `libsteam_api.so`, so the game loads it without any special configuration
+
 ## How It Works
 
 CreamySteamyLinux provides **two approaches** for unlocking DLCs:

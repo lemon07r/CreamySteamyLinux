@@ -2,3 +2,5 @@ build/
 *.so
 *.o
 .env
+csrinru_post.txt
+agents.md
