@@ -10,12 +10,12 @@ CreamySteamyLinux was built from scratch in pure C to solve these problems:
 
 | Problem | Old tools | CreamySteamyLinux |
 |---|---|---|
-| Games with launchers (e.g. Unity dowser) | ❌ LD_PRELOAD doesn't propagate to child processes | ✅ Proxy replacement works transparently — no env vars needed |
-| C++ runtime dependency | ❌ creamlinux requires libstdc++, spdlog, etc. | ✅ Pure C — only libc and libdl |
-| Binary size | ❌ ~3.6MB (creamlinux) | ✅ ~30KB (LD_PRELOAD) / ~300KB (proxy) |
-| Maintenance | ❌ Last updated 2+ years ago | ✅ Actively maintained |
-| Steam API coverage | ❌ Hooks only vtable-based interface calls | ✅ Proxy forwards all 1100+ Steam API functions, overrides 8 DLC-related flat API functions |
-| Static analysis | ❌ None | ✅ Tested with gcc -fanalyzer, cppcheck, flawfinder, clang-tidy, scan-build |
+| Games with launchers (e.g. Unity dowser) | ✗ LD_PRELOAD doesn't propagate to child processes | ✓ Proxy replacement works transparently — no env vars needed |
+| C++ runtime dependency | ✗ creamlinux requires libstdc++, spdlog, etc. | ✓ Pure C — only libc and libdl |
+| Binary size | ✗ ~3.6MB (creamlinux) | ✓ ~30KB (LD_PRELOAD) / ~300KB (proxy) |
+| Maintenance | ✗ Last updated 2+ years ago | ✓ Actively maintained |
+| Steam API coverage | ✗ Hooks only vtable-based interface calls | ✓ Proxy forwards all 1100+ Steam API functions, overrides 8 DLC-related flat API functions |
+| Static analysis | ✗ None | ✓ Tested with gcc -fanalyzer, cppcheck, flawfinder, clang-tidy, scan-build |
 
 ### How it was built
 
