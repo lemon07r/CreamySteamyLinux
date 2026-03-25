@@ -21,9 +21,9 @@ CreamySteamyLinux was built from scratch in pure C to solve these problems:
 
 The proxy approach works the same way CreamInstaller does on Windows (DLL proxying), adapted for Linux shared objects:
 
-1. **Export extraction**: All exported symbols from the game's real `libsteam_api.so` are extracted using `nm -D`
-2. **Code generation**: A Python script generates `proxy.c` with assembly trampolines that forward every function call to the real library (loaded as `libsteam_api_o.so` via `dlopen`)
-3. **DLC overrides**: 8 DLC-related functions (`BIsDlcInstalled`, `BIsSubscribedApp`, `GetDLCCount`, `BGetDLCDataByIndex`, etc.) are replaced with implementations that read `cream_api.ini` and report all listed DLCs as owned
+1. **Export extraction**: All exported symbols from the game's real `libsteam_api.so` were extracted using `nm -D`
+2. **Code generation**: We wrote a Python script to generate `proxy.c` with assembly trampolines that forward every function call to the real library (loaded as `libsteam_api_o.so` via `dlopen`)
+3. **DLC overrides**: 8 DLC-related functions (`BIsDlcInstalled`, `BIsSubscribedApp`, `GetDLCCount`, `BGetDLCDataByIndex`, etc.) were replaced with implementations that read `cream_api.ini` and report all listed DLCs as owned
 4. **Drop-in replacement**: The compiled proxy is a direct replacement for `libsteam_api.so`, so the game loads it without any special configuration
 
 ## How It Works
