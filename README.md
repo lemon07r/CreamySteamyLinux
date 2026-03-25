@@ -6,13 +6,13 @@ A lightweight, pure-C Steam DLC unlocker for native Linux Steam games.
 
 CreamySteamyLinux provides **two approaches** for unlocking DLCs:
 
-### Approach 1: LD_PRELOAD Hook (Simple)
+### Approach 1: Proxy Replacement (Recommended)
 
-Uses `LD_PRELOAD` to intercept Steam API calls before they reach the real `libsteam_api.so`. Works great for games that launch directly.
+Replaces the game's `libsteam_api.so` with a proxy that forwards all calls to the original library while overriding DLC-related functions. This is the same approach used by [CreamInstaller](https://github.com/FroggMaster/CreamInstaller) on Windows. **Use this method** — it works with all games, including those with launchers that don't propagate environment variables.
 
-### Approach 2: Proxy Replacement (Recommended)
+### Approach 2: LD_PRELOAD Hook (Fallback)
 
-Replaces the game's `libsteam_api.so` with a proxy that forwards all calls to the original library while overriding DLC-related functions. This is the same approach used by [CreamInstaller](https://github.com/FroggMaster/CreamInstaller) on Windows and works even when games use launchers that don't propagate `LD_PRELOAD`.
+Uses `LD_PRELOAD` to intercept Steam API calls before they reach the real `libsteam_api.so`. Only use this if the proxy approach doesn't work for your specific game.
 
 ## Key Features
 
@@ -47,10 +47,25 @@ gcc -shared -fPIC -O2 -o libsteam_api.so proxy.c -ldl
 
 ## Installation
 
-### Method 1: LD_PRELOAD (Simple games)
+### Method 1: Proxy Replacement (Recommended)
+
+This is the recommended method. It works with all games and requires no special Steam launch options.
+
+1. Find `libsteam_api.so` in your game's directory (e.g. `GameName_Data/Plugins/`)
+2. Back up the original: `mv libsteam_api.so libsteam_api_o.so`
+3. Copy the proxy in its place: `cp libsteam_api.so <game plugins dir>/libsteam_api.so`
+4. Copy `cream_api.ini` to the same directory as the proxy `libsteam_api.so`
+5. Edit `cream_api.ini` with your game's DLC IDs (or use `fetch_dlc.sh` to generate it)
+6. Launch the game normally — no special launch options needed!
+
+To restore the original, just rename `libsteam_api_o.so` back to `libsteam_api.so`.
+
+### Method 2: LD_PRELOAD (Fallback)
+
+Only use this if Method 1 doesn't work for your game.
 
 1. Copy these files to your game's root directory:
-   - `build/lib64CreamySteamy.so` (and/or `build/lib32CreamySteamy.so`)
+   - `lib64CreamySteamy.so` (and/or `lib32CreamySteamy.so`)
    - `creamy.sh`
    - `cream_api.ini` (edit with your game's DLC IDs)
 
@@ -60,16 +75,6 @@ gcc -shared -fPIC -O2 -o libsteam_api.so proxy.c -ldl
    ```
 
 3. Launch the game!
-
-### Method 2: Proxy Replacement (Games with launchers)
-
-1. Navigate to the game's directory where `libsteam_api.so` lives (e.g. `GameName_Data/Plugins/`)
-2. Rename the original: `mv libsteam_api.so libsteam_api_o.so`
-3. Copy the proxy: `cp libsteam_api.so <game plugins dir>/libsteam_api.so`
-4. Copy `cream_api.ini` to the same directory as the proxy `libsteam_api.so`
-5. Launch the game normally — no special launch options needed!
-
-To restore the original, just rename `libsteam_api_o.so` back to `libsteam_api.so`.
 
 ## cream_api.ini Format
 
