@@ -1,0 +1,56 @@
+name: Build Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y gcc gcc-multilib
+
+      - name: Build 64-bit LD_PRELOAD library
+        run: |
+          mkdir -p build
+          gcc -shared -fPIC -O2 -Wall -Wextra -Wno-unused-parameter \
+              -o build/lib64CreamySteamy.so creamy.c -ldl
+
+      - name: Build 32-bit LD_PRELOAD library
+        run: |
+          gcc -m32 -shared -fPIC -O2 -Wall -Wextra -Wno-unused-parameter \
+              -o build/lib32CreamySteamy.so creamy.c -ldl
+
+      - name: Build 64-bit proxy library
+        run: |
+          gcc -shared -fPIC -O2 -Wall -Wextra -Wno-unused-parameter \
+              -o build/libsteam_api.so proxy.c -ldl
+
+      - name: Package release
+        run: |
+          mkdir -p release
+          cp build/lib64CreamySteamy.so release/
+          cp build/lib32CreamySteamy.so release/
+          cp build/libsteam_api.so release/
+          cp creamy.sh release/
+          cp fetch_dlc.sh release/
+          cp LICENSE release/
+          cp README.md release/
+          cd release && zip -r ../CreamySteamyLinux-${GITHUB_REF_NAME}.zip .
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            CreamySteamyLinux-*.zip
+            build/lib64CreamySteamy.so
+            build/lib32CreamySteamy.so
+            build/libsteam_api.so
+          generate_release_notes: true
