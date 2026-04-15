@@ -97,6 +97,16 @@ This is the recommended method. It works with all games and requires no special 
 
 To restore the original, just rename `steam_api_o.so` back to `libsteam_api.so`.
 
+### Re-deploying After Steam Updates
+
+Steam updates will overwrite `libsteam_api.so` with the original, breaking the proxy. To re-apply:
+
+```bash
+./deploy.sh /path/to/game/Plugins
+```
+
+The script auto-detects whether the proxy needs re-deploying, backs up the original if needed, and copies the proxy + config. Run `./deploy.sh --status` to check, or `./deploy.sh --restore` to undo.
+
 ### Method 2: LD_PRELOAD (Fallback)
 
 Only use this if Method 1 doesn't work for your game.
