@@ -14,6 +14,7 @@ override_fns = [
     "SteamAPI_ISteamApps_BIsAppInstalled",
     "SteamAPI_ISteamUser_UserHasLicenseForApp",
     "SteamAPI_ISteamApps_GetEarliestPurchaseUnixTime",
+    "SteamInternal_FindOrCreateUserInterface",
 ]
 
 print("""/*
@@ -339,6 +340,139 @@ int SteamAPI_ISteamUser_UserHasLicenseForApp(void *self, CSteamID_flat steamID, 
     fn_t real = (fn_t)get_real_fn("SteamAPI_ISteamUser_UserHasLicenseForApp");
     return real ? real(self, steamID, appID) : 2;
 }
+
+/* ========================================================================= */
+/* ISteamApps vtable hooking                                                  */
+/* Games using SteamInternal_FindOrCreateUserInterface get an ISteamApps*     */
+/* with a C++ vtable. We patch the vtable to intercept DLC methods.           */
+/* ========================================================================= */
+
+#define VTABLE_SLOTS 64
+#define VTIDX_BIsSubscribed              0
+#define VTIDX_BIsSubscribedApp           6
+#define VTIDX_BIsDlcInstalled            7
+#define VTIDX_GetEarliestPurchaseUnixTime 8
+#define VTIDX_GetDLCCount                10
+#define VTIDX_BGetDLCDataByIndex         11
+#define VTIDX_BIsAppInstalled            19
+
+static void *g_patched_vtable[VTABLE_SLOTS];
+static bool g_vtable_patched = false;
+static void *g_real_steamapps = NULL;
+
+static bool vt_BIsSubscribed(void *self) {
+    LOG("[vtable] BIsSubscribed -> true");
+    return true;
+}
+
+static bool vt_BIsSubscribedApp(void *self, AppId_t appID) {
+    load_config();
+    if (is_dlc_owned(appID)) {
+        LOG("[vtable] BIsSubscribedApp(%u) -> true (UNLOCKED)", appID);
+        return true;
+    }
+    typedef bool (*fn_t)(void*, AppId_t);
+    void **real_vt = *(void***)g_real_steamapps;
+    fn_t real = (fn_t)real_vt[VTIDX_BIsSubscribedApp];
+    bool r = real ? real(self, appID) : false;
+    LOG("[vtable] BIsSubscribedApp(%u) -> %s (real)", appID, r ? "true" : "false");
+    return r;
+}
+
+static bool vt_BIsDlcInstalled(void *self, AppId_t appID) {
+    load_config();
+    if (is_dlc_owned(appID)) {
+        LOG("[vtable] BIsDlcInstalled(%u) -> true (UNLOCKED)", appID);
+        return true;
+    }
+    typedef bool (*fn_t)(void*, AppId_t);
+    void **real_vt = *(void***)g_real_steamapps;
+    fn_t real = (fn_t)real_vt[VTIDX_BIsDlcInstalled];
+    bool r = real ? real(self, appID) : false;
+    LOG("[vtable] BIsDlcInstalled(%u) -> %s (real)", appID, r ? "true" : "false");
+    return r;
+}
+
+static uint32_t vt_GetEarliestPurchaseUnixTime(void *self, AppId_t appID) {
+    load_config();
+    if (is_dlc_owned(appID)) {
+        LOG("[vtable] GetEarliestPurchaseUnixTime(%u) -> 1577836800 (UNLOCKED)", appID);
+        return 1577836800;
+    }
+    typedef uint32_t (*fn_t)(void*, AppId_t);
+    void **real_vt = *(void***)g_real_steamapps;
+    fn_t real = (fn_t)real_vt[VTIDX_GetEarliestPurchaseUnixTime];
+    return real ? real(self, appID) : 0;
+}
+
+static int vt_GetDLCCount(void *self) {
+    load_config();
+    LOG("[vtable] GetDLCCount -> %d", g_dlc_count);
+    return g_dlc_count;
+}
+
+static bool vt_BGetDLCDataByIndex(void *self, int iDLC, AppId_t *pAppID, bool *pbAvailable, char *pchName, int cchNameBufferSize) {
+    load_config();
+    if (iDLC >= 0 && iDLC < g_dlc_count) {
+        *pAppID = g_dlcs[iDLC].app_id;
+        *pbAvailable = true;
+        if (cchNameBufferSize > 0) {
+            strncpy(pchName, g_dlcs[iDLC].name, (size_t)(cchNameBufferSize - 1));
+            pchName[cchNameBufferSize - 1] = '\\0';
+        }
+        LOG("[vtable] BGetDLCDataByIndex(%d) -> %u '%s'", iDLC, g_dlcs[iDLC].app_id, g_dlcs[iDLC].name);
+        return true;
+    }
+    typedef bool (*fn_t)(void*, int, AppId_t*, bool*, char*, int);
+    void **real_vt = *(void***)g_real_steamapps;
+    fn_t real = (fn_t)real_vt[VTIDX_BGetDLCDataByIndex];
+    return real ? real(self, iDLC, pAppID, pbAvailable, pchName, cchNameBufferSize) : false;
+}
+
+static bool vt_BIsAppInstalled(void *self, AppId_t appID) {
+    load_config();
+    if (is_dlc_owned(appID)) {
+        LOG("[vtable] BIsAppInstalled(%u) -> true (UNLOCKED)", appID);
+        return true;
+    }
+    typedef bool (*fn_t)(void*, AppId_t);
+    void **real_vt = *(void***)g_real_steamapps;
+    fn_t real = (fn_t)real_vt[VTIDX_BIsAppInstalled];
+    return real ? real(self, appID) : false;
+}
+
+void *SteamInternal_FindOrCreateUserInterface(int hSteamUser, const char *pszVersion) {
+    ensure_real_lib();
+    typedef void* (*fn_t)(int, const char*);
+    fn_t real_fn = (fn_t)dlsym(g_real_lib, "SteamInternal_FindOrCreateUserInterface");
+    if (!real_fn) {
+        LOG("ERROR: Cannot find real SteamInternal_FindOrCreateUserInterface");
+        return NULL;
+    }
+    void *iface = real_fn(hSteamUser, pszVersion);
+    if (!iface) return NULL;
+
+    if (pszVersion && strstr(pszVersion, "STEAMAPPS_INTERFACE_VERSION")) {
+        load_config();
+        LOG("[vtable] Intercepted ISteamApps interface (%s), patching vtable...", pszVersion);
+        g_real_steamapps = iface;
+        void **real_vt = *(void***)iface;
+        memcpy(g_patched_vtable, real_vt, sizeof(g_patched_vtable));
+        g_patched_vtable[VTIDX_BIsSubscribed] = (void*)vt_BIsSubscribed;
+        g_patched_vtable[VTIDX_BIsSubscribedApp] = (void*)vt_BIsSubscribedApp;
+        g_patched_vtable[VTIDX_BIsDlcInstalled] = (void*)vt_BIsDlcInstalled;
+        g_patched_vtable[VTIDX_GetEarliestPurchaseUnixTime] = (void*)vt_GetEarliestPurchaseUnixTime;
+        g_patched_vtable[VTIDX_GetDLCCount] = (void*)vt_GetDLCCount;
+        g_patched_vtable[VTIDX_BGetDLCDataByIndex] = (void*)vt_BGetDLCDataByIndex;
+        g_patched_vtable[VTIDX_BIsAppInstalled] = (void*)vt_BIsAppInstalled;
+        *(void***)iface = g_patched_vtable;
+        g_vtable_patched = true;
+        LOG("[vtable] ISteamApps vtable patched with %d DLC overrides", g_dlc_count);
+    } else {
+        LOG("[vtable] Forwarding interface request: %s", pszVersion ? pszVersion : "(null)");
+    }
+    return iface;
+}
 """)
 
 # Now generate forwarding stubs for all other functions
@@ -350,11 +484,17 @@ print("/* These use a generic variadic forwarding approach via function pointers
 print()
 
 for fn in forward_fns:
-    # Use assembly-level forwarding via a trampoline
+    # Use PIC-safe assembly trampoline via GOT-relative addressing
     print(f'/* {fn} */')
-    print(f'__asm__(".globl {fn}");')
-    print(f'__asm__("{fn}: jmp *_fwd_{fn}(%rip)");')
     print(f'__attribute__((visibility("hidden"))) void *_fwd_{fn} = NULL;')
+    print(f'__attribute__((naked)) void {fn}(void) {{')
+    print(f'    __asm__ volatile (')
+    print(f'        "movq _fwd_{fn}@GOTPCREL(%%rip), %%rax\\n"')
+    print(f'        "movq (%%rax), %%rax\\n"')
+    print(f'        "jmp *%%rax\\n"')
+    print(f'        ::: "rax"')
+    print(f'    );')
+    print(f'}}')
     print()
 
 # Constructor to resolve all forwarded symbols

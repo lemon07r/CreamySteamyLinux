@@ -120,6 +120,7 @@ generate_proxy() {
         SteamAPI_ISteamApps_BIsAppInstalled
         SteamAPI_ISteamUser_UserHasLicenseForApp
         SteamAPI_ISteamApps_GetEarliestPurchaseUnixTime
+        SteamInternal_FindOrCreateUserInterface
     )
 
     # Filter out override functions to get the forwarded-only list
