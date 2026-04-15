@@ -19,7 +19,7 @@ override_fns = [
 print("""/*
  * CreamySteamyLinux - Steam API Proxy for DLC Unlocking
  * 
- * This replaces libsteam_api.so. It loads the real library (libsteam_api_o.so)
+ * This replaces libsteam_api.so. It loads the real library (steam_api_o.so)
  * and forwards all calls, overriding DLC-related functions.
  *
  * Build: gcc -shared -fPIC -o libsteam_api.so proxy.c -ldl
@@ -214,7 +214,7 @@ static void *g_real_lib = NULL;
 static void ensure_real_lib(void) {
     if (g_real_lib) return;
     
-    /* Find the real library - renamed to libsteam_api_o.so */
+    /* Find the real library - renamed to steam_api_o.so */
     Dl_info info;
     char real_path[4096] = {0};
     
@@ -222,7 +222,7 @@ static void ensure_real_lib(void) {
         strncpy(real_path, info.dli_fname, sizeof(real_path)-1);
         char *slash = strrchr(real_path, '/');
         if (slash) {
-            strcpy(slash+1, "libsteam_api_o.so");
+            strcpy(slash+1, "steam_api_o.so");
         }
     }
     
@@ -232,11 +232,11 @@ static void ensure_real_lib(void) {
     
     if (!g_real_lib) {
         /* Fallback: try relative */
-        g_real_lib = dlopen("./libsteam_api_o.so", RTLD_NOW | RTLD_LOCAL);
+        g_real_lib = dlopen("./steam_api_o.so", RTLD_NOW | RTLD_LOCAL);
     }
     
     if (!g_real_lib) {
-        LOG("FATAL: Cannot load real libsteam_api_o.so: %s", dlerror());
+        LOG("FATAL: Cannot load real steam_api_o.so: %s", dlerror());
     } else {
         LOG("Loaded real library: %s", real_path);
     }

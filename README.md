@@ -22,7 +22,7 @@ CreamySteamyLinux was built from scratch in pure C to solve these problems:
 The proxy approach works the same way CreamInstaller does on Windows (DLL proxying), adapted for Linux shared objects:
 
 1. **Export extraction**: All exported symbols from the game's real `libsteam_api.so` were extracted using `nm -D`
-2. **Code generation**: A Python script was written to generate `proxy.c` with assembly trampolines that forward every function call to the real library (loaded as `libsteam_api_o.so` via `dlopen`)
+2. **Code generation**: A Python script was written to generate `proxy.c` with assembly trampolines that forward every function call to the real library (loaded as `steam_api_o.so` via `dlopen`)
 3. **DLC overrides**: 8 DLC-related functions (`BIsDlcInstalled`, `BIsSubscribedApp`, `GetDLCCount`, `BGetDLCDataByIndex`, etc.) were replaced with implementations that read `cream_api.ini` and report all listed DLCs as owned
 4. **Drop-in replacement**: The compiled proxy is a direct replacement for `libsteam_api.so`, so the game loads it without any special configuration
 
@@ -83,7 +83,9 @@ This is the recommended method. It works with all games and requires no special 
 
 2. Find `libsteam_api.so` in your game's directory (e.g. `GameName_Data/Plugins/`)
 
-3. Back up the original: `mv libsteam_api.so libsteam_api_o.so`
+3. Back up the original: `mv libsteam_api.so steam_api_o.so`
+
+   **Important:** The backup must be named `steam_api_o.so` (without the `lib` prefix). Unity auto-preloads all `lib*.so` files in the Plugins directory, and if the original loads before the proxy, the proxy will fail.
 
 4. Copy the proxy and config to the same directory:
    ```bash
@@ -93,7 +95,7 @@ This is the recommended method. It works with all games and requires no special 
 
 5. Launch the game normally, no special launch options needed!
 
-To restore the original, just rename `libsteam_api_o.so` back to `libsteam_api.so`.
+To restore the original, just rename `steam_api_o.so` back to `libsteam_api.so`.
 
 ### Method 2: LD_PRELOAD (Fallback)
 
@@ -153,6 +155,7 @@ CREAMY_LOG=1 %command%
 ## Credits
 
 Inspired by:
+- [CreamAPI](https://cs.rin.ru/forum/viewtopic.php?f=29&t=70576) by deadmau5 (cs.rin.ru) — the original Steam DLC unlocker
 - [creamlinux](https://github.com/anticitizn/creamlinux) by anticitizn
 - [CreamTripApiLinux](https://github.com/KVarnitZ/CreamTripApiLinux) by KVarnitZ
 - [CreamInstaller](https://github.com/FroggMaster/CreamInstaller) by FroggMaster
