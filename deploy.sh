@@ -1,13 +1,12 @@
 #!/bin/bash
 # CreamySteamyLinux - Deploy/Re-deploy Script
-# Re-applies the proxy after Steam updates overwrite it.
+# Generates a game-specific proxy and deploys it. Always uses the proxy method.
 #
 # Usage:
 #   ./deploy.sh /path/to/game           # point to game folder, auto-finds libsteam_api.so
-#   ./deploy.sh                          # auto-detect (searches Steam library, or uses CWD if dropped in game folder)
+#   ./deploy.sh                          # auto-detect (searches CWD, then Steam library)
 #   ./deploy.sh --status [/path/to/game] # check if proxy is in place
 #   ./deploy.sh --restore [/path/to/game]# restore original libsteam_api.so
-#   ./deploy.sh --rebuild                # rebuild proxy from source first
 #
 # The script can be dropped into a game folder and run directly from there.
 
@@ -27,30 +26,7 @@ info()  { echo -e "${GREEN}[+]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[!]${NC} $*"; }
 error() { echo -e "${RED}[-]${NC} $*"; exit 1; }
 
-# Locate the proxy .so and cream_api.ini sources.
-# If the script lives in the repo (next to proxy.c), use the repo build.
-# If dropped into a game folder, look for them next to the script or in CWD.
-find_sources() {
-    PROXY_SRC=""
-    CONFIG_SRC=""
-
-    # Check repo location (script dir has proxy.c → it's the repo)
-    if [ -f "$SCRIPT_DIR/proxy.c" ]; then
-        if [ -f "$SCRIPT_DIR/libsteam_api.so" ]; then PROXY_SRC="$SCRIPT_DIR/libsteam_api.so"; fi
-        if [ -f "$SCRIPT_DIR/cream_api.ini" ];   then CONFIG_SRC="$SCRIPT_DIR/cream_api.ini"; fi
-    fi
-
-    # Fallback: check next to script
-    if [ -z "$PROXY_SRC" ] && [ -f "$SCRIPT_DIR/libsteam_api.so" ]; then PROXY_SRC="$SCRIPT_DIR/libsteam_api.so"; fi
-    if [ -z "$CONFIG_SRC" ] && [ -f "$SCRIPT_DIR/cream_api.ini" ];  then CONFIG_SRC="$SCRIPT_DIR/cream_api.ini"; fi
-
-    # Fallback: check CWD
-    if [ -z "$PROXY_SRC" ] && [ -f "$PWD/libsteam_api.so" ]; then PROXY_SRC="$PWD/libsteam_api.so"; fi
-    if [ -z "$CONFIG_SRC" ] && [ -f "$PWD/cream_api.ini" ];  then CONFIG_SRC="$PWD/cream_api.ini"; fi
-}
-
 # Find the directory containing libsteam_api.so within a game folder
-# Searches recursively from the given root
 find_steam_api_dir() {
     local search_root="$1"
     find "$search_root" -maxdepth 5 -name "libsteam_api.so" -printf "%h\n" 2>/dev/null | head -n 1
@@ -112,8 +88,72 @@ resolve_plugins_dir() {
 
 # Check if a file is our proxy (contains CreamySteamy marker)
 is_proxy() {
-    # Use a subshell without pipefail — strings on binaries can return non-zero
     ( set +o pipefail; strings "$1" 2>/dev/null | grep -q "CreamySteamy" )
+}
+
+# Generate a game-specific proxy from the original library's symbols
+# This is the core of the proxy approach: extract all exports, generate
+# trampolines, compile a drop-in replacement.
+generate_proxy() {
+    local original="$1"
+    local output="$2"
+    local tmpdir
+    tmpdir="$(mktemp -d /tmp/creamy_build_XXXXXX)"
+
+    info "Generating game-specific proxy..."
+
+    # Extract all exported function symbols from the original library
+    # Filter: only "T" (text/code) symbols, skip _init/_fini
+    nm -D "$original" | awk '$2 == "T" { print $3 }' | grep -v '^_init$\|^_fini$' | sort > "$tmpdir/all_exports.txt"
+
+    local total
+    total="$(wc -l < "$tmpdir/all_exports.txt")"
+    info "Found $total exported symbols in original library"
+
+    # DLC override functions — these are implemented in the proxy, not forwarded
+    local overrides=(
+        SteamAPI_ISteamApps_BIsDlcInstalled
+        SteamAPI_ISteamApps_BIsSubscribedApp
+        SteamAPI_ISteamApps_BIsSubscribed
+        SteamAPI_ISteamApps_GetDLCCount
+        SteamAPI_ISteamApps_BGetDLCDataByIndex
+        SteamAPI_ISteamApps_BIsAppInstalled
+        SteamAPI_ISteamUser_UserHasLicenseForApp
+        SteamAPI_ISteamApps_GetEarliestPurchaseUnixTime
+    )
+
+    # Filter out override functions to get the forwarded-only list
+    local override_pattern
+    override_pattern="$(printf '%s\n' "${overrides[@]}" | paste -sd'|')"
+    grep -vE "^($override_pattern)$" "$tmpdir/all_exports.txt" > "$tmpdir/forward.txt"
+
+    local fwd_count
+    fwd_count="$(wc -l < "$tmpdir/forward.txt")"
+    info "Forwarding $fwd_count symbols, overriding ${#overrides[@]} DLC functions"
+
+    # Check that gen_proxy.py is available
+    local gen_script="$SCRIPT_DIR/gen_proxy.py"
+    if [ ! -f "$gen_script" ]; then
+        error "gen_proxy.py not found in $SCRIPT_DIR — cannot generate proxy"
+    fi
+
+    # Generate proxy.c
+    cp "$tmpdir/forward.txt" /tmp/steam_api_forward.txt
+    python3 "$gen_script" > "$tmpdir/proxy.c"
+
+    # Compile
+    gcc -shared -fPIC -O2 -Wall -Wextra -Wno-unused-parameter \
+        -o "$output" "$tmpdir/proxy.c" -ldl 2>&1
+
+    # Verify no undefined _fwd_ symbols leaked
+    local undef_count
+    undef_count="$(nm -D "$output" 2>/dev/null | grep ' U ' | grep -c '_fwd_' || true)"
+    if [ "$undef_count" -gt 0 ]; then
+        error "Build error: $undef_count undefined _fwd_ symbols in proxy"
+    fi
+
+    info "Proxy compiled successfully ($total symbols)"
+    rm -rf "$tmpdir"
 }
 
 do_status() {
@@ -129,8 +169,16 @@ do_status() {
         error "$PROXY_NAME not found in $dest"
     fi
 
-    [ -f "$dest/$ORIGINAL_NAME" ] && info "Backup: $ORIGINAL_NAME present" || warn "Backup: $ORIGINAL_NAME missing"
-    [ -f "$dest/cream_api.ini" ]   && info "Config: cream_api.ini present"  || warn "Config: cream_api.ini missing"
+    if [ -f "$dest/$ORIGINAL_NAME" ]; then
+        info "Backup: $ORIGINAL_NAME present"
+    else
+        warn "Backup: $ORIGINAL_NAME missing"
+    fi
+    if [ -f "$dest/cream_api.ini" ]; then
+        info "Config: cream_api.ini present"
+    else
+        warn "Config: cream_api.ini missing"
+    fi
 }
 
 do_restore() {
@@ -140,19 +188,10 @@ do_restore() {
     info "Restored original $PROXY_NAME"
 }
 
-do_rebuild() {
-    [ -f "$SCRIPT_DIR/proxy.c" ] || error "proxy.c not found — cannot rebuild (not in repo directory?)"
-    info "Rebuilding proxy from source..."
-    gcc -shared -fPIC -O2 -Wall -Wextra -Wno-unused-parameter \
-        -o "$SCRIPT_DIR/libsteam_api.so" "$SCRIPT_DIR/proxy.c" -ldl
-    info "Built $SCRIPT_DIR/libsteam_api.so"
-    PROXY_SRC="$SCRIPT_DIR/libsteam_api.so"
-}
-
 do_deploy() {
     local dest="$1"
 
-    # If libsteam_api.so exists and is NOT our proxy, back it up
+    # Step 1: Ensure we have the original library backed up
     if [ -f "$dest/$PROXY_NAME" ] && ! is_proxy "$dest/$PROXY_NAME"; then
         if [ -f "$dest/$ORIGINAL_NAME" ]; then
             warn "Backup $ORIGINAL_NAME already exists, skipping rename"
@@ -162,26 +201,31 @@ do_deploy() {
         fi
     fi
 
-    # Verify backup exists
     [ -f "$dest/$ORIGINAL_NAME" ] || error "No original library ($ORIGINAL_NAME) found — nothing to proxy"
 
-    # Copy proxy
-    [ -n "${PROXY_SRC:-}" ] && [ -f "$PROXY_SRC" ] || error "Proxy not built. Run: ./deploy.sh --rebuild"
+    # Step 2: Generate a game-specific proxy from the original library
+    local proxy_out
+    proxy_out="$(mktemp /tmp/creamy_proxy_XXXXXX.so)"
+    generate_proxy "$dest/$ORIGINAL_NAME" "$proxy_out"
 
-    # Don't copy over itself
-    if [ "$(realpath "$PROXY_SRC")" != "$(realpath "$dest/$PROXY_NAME" 2>/dev/null || true)" ]; then
-        cp "$PROXY_SRC" "$dest/$PROXY_NAME"
-        info "Deployed proxy → $dest/$PROXY_NAME"
-    else
-        info "Proxy already in place"
+    # Step 3: Deploy
+    cp "$proxy_out" "$dest/$PROXY_NAME"
+    rm -f "$proxy_out"
+    info "Deployed proxy → $dest/$PROXY_NAME"
+
+    # Step 4: Handle cream_api.ini
+    # Look for a config source: repo, script dir, or CWD
+    local config_src=""
+    if [ -f "$SCRIPT_DIR/cream_api.ini" ]; then
+        config_src="$SCRIPT_DIR/cream_api.ini"
+    elif [ -f "$PWD/cream_api.ini" ]; then
+        config_src="$PWD/cream_api.ini"
     fi
 
-    # Copy config if not present or if source is newer
-    if [ -n "${CONFIG_SRC:-}" ] && [ -f "$CONFIG_SRC" ]; then
-        if [ ! -f "$dest/cream_api.ini" ] || [ "$CONFIG_SRC" -nt "$dest/cream_api.ini" ]; then
-            # Don't copy over itself
-            if [ "$(realpath "$CONFIG_SRC")" != "$(realpath "$dest/cream_api.ini" 2>/dev/null || true)" ]; then
-                cp "$CONFIG_SRC" "$dest/cream_api.ini"
+    if [ -n "$config_src" ]; then
+        if [ ! -f "$dest/cream_api.ini" ] || [ "$config_src" -nt "$dest/cream_api.ini" ]; then
+            if [ "$(realpath "$config_src")" != "$(realpath "$dest/cream_api.ini" 2>/dev/null || true)" ]; then
+                cp "$config_src" "$dest/cream_api.ini"
                 info "Copied cream_api.ini"
             else
                 info "cream_api.ini already up to date"
@@ -190,24 +234,26 @@ do_deploy() {
             info "cream_api.ini already up to date"
         fi
     else
-        [ -f "$dest/cream_api.ini" ] || warn "No cream_api.ini found — generate one with: ./fetch_dlc.sh <APP_ID>"
+        if [ ! -f "$dest/cream_api.ini" ]; then
+            warn "No cream_api.ini found — generate one with: ./fetch_dlc.sh <APP_ID>"
+        else
+            info "Using existing cream_api.ini"
+        fi
     fi
 
     echo ""
-    info "Done! Launch the game normally."
+    info "Done! Launch the game normally — no launch options needed."
 }
 
 # --- Main ---
 
 ACTION="deploy"
 DEST=""
-REBUILD=false
 
 for arg in "$@"; do
     case "$arg" in
         --status)   ACTION="status" ;;
         --restore)  ACTION="restore" ;;
-        --rebuild)  REBUILD=true ;;
         --help|-h)
             echo "Usage: $0 [OPTIONS] [GAME_DIR]"
             echo ""
@@ -219,10 +265,12 @@ for arg in "$@"; do
             echo "    2. Script's own directory (if not the repo)"
             echo "    3. Steam library (~/.local/share/Steam/steamapps/common/)"
             echo ""
+            echo "  The proxy is generated specifically for each game's Steam API version."
+            echo "  No launch options or LD_PRELOAD needed — just deploy and play."
+            echo ""
             echo "Options:"
             echo "  --status    Check if proxy is deployed"
             echo "  --restore   Restore original libsteam_api.so"
-            echo "  --rebuild   Rebuild proxy from source before deploying"
             echo "  -h, --help  Show this help"
             exit 0
             ;;
@@ -230,10 +278,6 @@ for arg in "$@"; do
         *)          DEST="$arg" ;;
     esac
 done
-
-find_sources
-
-if $REBUILD; then do_rebuild; fi
 
 # Resolve target directory
 if [ -n "$DEST" ]; then
