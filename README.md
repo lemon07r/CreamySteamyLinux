@@ -81,31 +81,36 @@ This is the recommended method. It works with all games and requires no special 
    ```
    Replace `<APP_ID>` with your game's Steam App ID (find it on the game's Steam store page URL).
 
-2. Find `libsteam_api.so` in your game's directory (e.g. `GameName_Data/Plugins/`)
-
-3. Back up the original: `mv libsteam_api.so steam_api_o.so`
-
-   **Important:** The backup must be named `steam_api_o.so` (without the `lib` prefix). Unity auto-preloads all `lib*.so` files in the Plugins directory, and if the original loads before the proxy, the proxy will fail.
-
-4. Copy the proxy and config to the same directory:
+2. Deploy using the script (auto-finds `libsteam_api.so` in the game directory):
    ```bash
-   cp libsteam_api.so <game plugins dir>/libsteam_api.so
-   cp cream_api.ini <game plugins dir>/cream_api.ini
+   ./deploy.sh /path/to/game
    ```
 
-5. Launch the game normally, no special launch options needed!
+   Or do it manually:
+   - Find `libsteam_api.so` in your game's directory (e.g. `GameName_Data/Plugins/` or the game root)
+   - Back up the original: `mv libsteam_api.so steam_api_o.so`
+     (**Important:** The backup must be named `steam_api_o.so` without the `lib` prefix — Unity auto-preloads all `lib*.so` files)
+   - Copy the proxy and config to the same directory:
+     ```bash
+     cp libsteam_api.so <dir containing steam_api_o.so>/
+     cp cream_api.ini <dir containing steam_api_o.so>/
+     ```
 
-To restore the original, just rename `steam_api_o.so` back to `libsteam_api.so`.
+3. Launch the game normally, no special launch options needed!
+
+To restore the original: `./deploy.sh --restore /path/to/game` or manually rename `steam_api_o.so` back to `libsteam_api.so`.
 
 ### Re-deploying After Steam Updates
 
 Steam updates will overwrite `libsteam_api.so` with the original, breaking the proxy. To re-apply:
 
 ```bash
-./deploy.sh /path/to/game/Plugins
+./deploy.sh /path/to/game
 ```
 
-The script auto-detects whether the proxy needs re-deploying, backs up the original if needed, and copies the proxy + config. Run `./deploy.sh --status` to check, or `./deploy.sh --restore` to undo.
+Just point it at the game's root folder — it automatically finds `libsteam_api.so` wherever it lives (e.g. `GameName_Data/Plugins/`, or the game root itself). You can also drop `deploy.sh` into the game folder and run it from there with no arguments.
+
+Run `./deploy.sh --status /path/to/game` to check, or `./deploy.sh --restore /path/to/game` to undo.
 
 ### Method 2: LD_PRELOAD (Fallback)
 
