@@ -112,7 +112,8 @@ resolve_plugins_dir() {
 
 # Check if a file is our proxy (contains CreamySteamy marker)
 is_proxy() {
-    strings "$1" 2>/dev/null | grep -q "CreamySteamy"
+    # Use a subshell without pipefail — strings on binaries can return non-zero
+    ( set +o pipefail; strings "$1" 2>/dev/null | grep -q "CreamySteamy" )
 }
 
 do_status() {
