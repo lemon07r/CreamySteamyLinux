@@ -39,8 +39,17 @@ echo "[CreamySteamy] Config: $CREAM_CONFIG_PATH"
 echo "[CreamySteamy] Library: $CREAMY_LIB"
 echo "[CreamySteamy] Steam API: $LIBSTEAM_API_DIR/libsteam_api.so"
 
-# LD_PRELOAD our library + the real libsteam_api.so (needed for symbol resolution)
-export LD_PRELOAD="$CREAMY_LIB $LIBSTEAM_API_DIR/libsteam_api.so${LD_PRELOAD:+ $LD_PRELOAD}"
+# LD_PRELOAD uses spaces as delimiters, so paths with spaces break it.
+# Copy libraries to /tmp to avoid this issue.
+TMP_CREAMY="/tmp/creamy_$$_lib64CreamySteamy.so"
+TMP_STEAMAPI="/tmp/creamy_$$_libsteam_api.so"
+cp "$CREAMY_LIB" "$TMP_CREAMY"
+cp "$LIBSTEAM_API_DIR/libsteam_api.so" "$TMP_STEAMAPI"
+
+cleanup() { rm -f "$TMP_CREAMY" "$TMP_STEAMAPI"; }
+trap cleanup EXIT
+
+export LD_PRELOAD="$TMP_CREAMY $TMP_STEAMAPI${LD_PRELOAD:+ $LD_PRELOAD}"
 
 echo "[CreamySteamy] Launching: $@"
 exec "$@"
