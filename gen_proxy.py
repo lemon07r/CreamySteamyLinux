@@ -354,7 +354,7 @@ for fn in forward_fns:
     print(f'/* {fn} */')
     print(f'__asm__(".globl {fn}");')
     print(f'__asm__("{fn}: jmp *_fwd_{fn}(%rip)");')
-    print(f'static void *_fwd_{fn} = NULL;')
+    print(f'__attribute__((visibility("hidden"))) void *_fwd_{fn} = NULL;')
     print()
 
 # Constructor to resolve all forwarded symbols
