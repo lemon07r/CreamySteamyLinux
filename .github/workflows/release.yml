@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y gcc gcc-multilib
+        run: sudo apt-get update && sudo apt-get install -y gcc gcc-multilib clang
 
       - name: Build 64-bit LD_PRELOAD library
         run: |
