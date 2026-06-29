@@ -40,7 +40,6 @@ jobs:
           cp proxy.c release/
           cp deploy.py release/
           cp creamy.sh release/
-          cp fetch_dlc.sh release/
           cp LICENSE release/
           cp README.md release/
           cd release && zip -r ../CreamySteamyLinux-${GITHUB_REF_NAME}.zip .

@@ -40,6 +40,8 @@ The current proxy architecture builds on a refactor generously shared by **jeO8v
 On top of the port, this repository adds:
 
 - **Verified on more titles** — confirmed unlocking on BATTLETECH (`.so`, flat-API path) alongside the upstream Victoria 3 (`.so`) and Total War: Warhammer 3 (`.dll`) testing.
+- **One-command automation** — `deploy.py` now auto-detects the Steam App ID from the game's `appmanifest`, fetches the current DLC list online itself (no separate step, no `curl`), and writes `cream_api.ini` for you on every deploy. Running it with no arguments shows a picker of installed games. This folds in (and retires) the old `fetch_dlc.sh`, and re-syncing the DLC list each deploy avoids stale configs when a game adds new DLC.
+- **Easier maintenance** — added `--status` (summarizes the last run's unlocked DLC from the log) and `--uninstall` (restores the original library and cleans up leftover files).
 - **Clean static analysis** — fixed sign-conversion and non-prototype warnings so `check.sh` (gcc `-fanalyzer`, cppcheck, flawfinder, clang-tidy, scan-build) stays clean.
 - **Updated CI** — the GitHub Actions release workflow now ships `proxy.c` + `deploy.py` (the proxy is generated per-game at deploy time) and runs a `proxy.c` syntax check, instead of publishing an obsolete prebuilt generic proxy.
 
@@ -91,57 +93,63 @@ Linux proxies need `clang`; Windows `.dll` proxies additionally need `clang-cl`,
 
 ### Quick Start (Recommended)
 
-`deploy.py` automatically generates a game-specific proxy tailored to each game's Steam API version. No pre-built binaries needed — it extracts symbols, generates code, and compiles on the fly. It auto-detects whether the game uses `libsteam_api.so`, `steam_api64.dll`, or `steam_api.dll` and builds the matching proxy.
+One command does everything — no App ID hunting, no separate config step:
 
-1. Generate `cream_api.ini` for your game:
-   ```bash
-   ./fetch_dlc.sh <APP_ID>
-   ```
-   Replace `<APP_ID>` with your game's Steam App ID (find it on the game's Steam store page URL).
+```bash
+./deploy.py
+```
 
-2. Deploy:
-   ```bash
-   ./deploy.py /path/to/game
-   ```
-   That's it. The script finds the Steam API library wherever it lives, backs up the original (`steam_api_o.so` / `steam_api_o.dll`), generates a proxy matched to that game's API version, and deploys it. A `cream_api.ini` in your current directory is copied alongside it.
+With no arguments it lists your installed Steam games (across all library folders) and lets you pick one by number. Then it:
 
-3. Launch the game normally — no launch options, no LD_PRELOAD, nothing.
+1. Finds the game's Steam API library and backs up the original (`steam_api_o.so` / `steam_api_o.dll`).
+2. Auto-detects the Steam App ID from the game's `appmanifest`.
+3. Fetches the current DLC list online and writes `cream_api.ini` next to the library.
+4. Generates and compiles a proxy matched to that game's exact Steam API version (auto-detecting `.so` vs `.dll`) and deploys it.
 
-To restore the original: `./deploy.py --restore /path/to/game`
+Then just launch the game normally — no launch options, no `LD_PRELOAD`, nothing.
+
+You can also point it straight at a game:
+
+```bash
+./deploy.py "/path/to/game"
+```
+
+Useful flags:
+
+| Command | What it does |
+|---|---|
+| `./deploy.py [game]` | Deploy / re-deploy (re-fetches the DLC list each time) |
+| `./deploy.py --status [game]` | Show whether the proxy is active and summarize the last run's unlocked DLC |
+| `./deploy.py --restore [game]` | Restore the original Steam library |
+| `./deploy.py --uninstall [game]` | Restore the original **and** remove leftover files (logs, configs, old `LD_PRELOAD` helpers) |
+| `./deploy.py --app-id <id> [game]` | Override the auto-detected App ID |
+| `./deploy.py --no-fetch [game]` | Skip the online fetch and use an existing `cream_api.ini` (offline) |
 
 ### Re-deploying After Steam Updates
 
-Steam updates overwrite the Steam API library, breaking the proxy. Just re-run:
+Steam updates overwrite the Steam API library (and games sometimes add new DLC). Just re-run:
 
 ```bash
-./deploy.py /path/to/game
+./deploy.py "/path/to/game"
 ```
 
-The proxy is regenerated fresh each time, so it always matches the game's current Steam API version — even if Steam updated the library.
-
-Run `./deploy.py --status /path/to/game` to check, or `./deploy.py --restore /path/to/game` to undo.
+The proxy is regenerated fresh and the DLC list is re-fetched every time, so it always matches the game's current Steam API version and current DLC set.
 
 ### Method 2: LD_PRELOAD (Fallback)
 
-Only use this if Method 1 doesn't work for your game.
+Only use this if the proxy method doesn't work for your game. It needs a `cream_api.ini` (the proxy method writes one for you; you can reuse that file, or write one by hand using the format below).
 
-1. Generate `cream_api.ini` for your game:
-   ```bash
-   ./fetch_dlc.sh <APP_ID>
-   ```
-   Replace `<APP_ID>` with your game's Steam App ID.
-
-2. Copy these files to your game's root directory:
+1. Copy these files to your game's root directory:
    - `lib64CreamySteamy.so` (and/or `lib32CreamySteamy.so`)
    - `creamy.sh`
-   - `cream_api.ini` (generated in step 1)
+   - `cream_api.ini`
 
-3. In Steam: Right-click game > Properties > Launch Options:
+2. In Steam: Right-click game > Properties > Launch Options:
    ```
    sh ./creamy.sh %command%
    ```
 
-4. Launch the game!
+3. Launch the game!
 
 ## cream_api.ini Format
 

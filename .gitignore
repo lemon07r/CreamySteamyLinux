@@ -4,3 +4,4 @@ build/
 .env
 csrinru_post.txt
 agents.md
+__pycache__/
