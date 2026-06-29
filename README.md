@@ -27,24 +27,6 @@ The proxy approach works the same way CreamInstaller does on Windows (DLL proxyi
 3. **DLC overrides**: 9 DLC-related functions (`BIsDlcInstalled`, `BIsSubscribedApp`, `GetDLCCount`, `BGetDLCDataByIndex`, `SteamInternal_FindOrCreateUserInterface` vtable patch, etc.) are replaced with implementations that read `cream_api.ini` and report all listed DLCs as owned
 4. **Compile & deploy**: The proxy is compiled on the fly and deployed as a drop-in replacement — works with any game's Steam API version automatically, on Linux or (via [msvc-wine](https://github.com/mstorsjo/msvc-wine)) Windows
 
-### Recent improvements
-
-The current proxy architecture builds on a refactor generously shared by **jeO8vQJcr0gny** on [cs.rin.ru](https://cs.rin.ru/forum/viewtopic.php?p=3515330#p3515330). Ported from that work:
-
-- **Flexible trampoline generation** — only the API-specific code is generated; the rest lives in a static `proxy.c`. Trampolines are stored as an array + `#define` index table (easier to hack on) and can optionally print on every hook.
-- **ABI bug fix** — trampolines jump through `r11` instead of `rax`, because the SysV ABI uses `rax` to pass the variadic-argument register count.
-- **Single entry point** — `deploy.py` replaces the old `deploy.sh` + `gen_proxy.py`, and writes its temp files (`forward.txt`, `generate.h`) next to the game library for easy debugging.
-- **Vtable fallback fix** — `SteamInternal_FindOrCreateUserInterface` now keeps a private copy of the real vtable, fixing an infinite loop that occurred when falling back to the genuine implementation.
-- **Windows `.dll` support** — in addition to Linux `.so`, `deploy.py` can build a `steam_api64.dll` / `steam_api.dll` proxy via `clang-cl` + `lld-link` + `winedump`.
-
-On top of the port, this repository adds:
-
-- **Verified on more titles** — confirmed unlocking on BATTLETECH (`.so`, flat-API path) alongside the upstream Victoria 3 (`.so`) and Total War: Warhammer 3 (`.dll`) testing.
-- **One-command automation** — `deploy.py` now auto-detects the Steam App ID from the game's `appmanifest`, fetches the current DLC list online itself (no separate step, no `curl`), and writes `cream_api.ini` for you on every deploy. Running it with no arguments shows a picker of installed games. This folds in (and retires) the old `fetch_dlc.sh`, and re-syncing the DLC list each deploy avoids stale configs when a game adds new DLC.
-- **Easier maintenance** — added `--status` (summarizes the last run's unlocked DLC from the log) and `--uninstall` (restores the original library and cleans up leftover files).
-- **Clean static analysis** — fixed sign-conversion and non-prototype warnings so `check.sh` (gcc `-fanalyzer`, cppcheck, flawfinder, clang-tidy, scan-build) stays clean.
-- **Updated CI** — the GitHub Actions release workflow now ships `proxy.c` + `deploy.py` (the proxy is generated per-game at deploy time) and runs a `proxy.c` syntax check, instead of publishing an obsolete prebuilt generic proxy.
-
 ## How It Works
 
 CreamySteamyLinux provides **two approaches** for unlocking DLCs:
@@ -56,16 +38,6 @@ Replaces the game's `libsteam_api.so` with a proxy that forwards all calls to th
 ### Approach 2: LD_PRELOAD Hook (Fallback)
 
 Uses `LD_PRELOAD` to intercept Steam API calls before they reach the real `libsteam_api.so`. Only use this if the proxy approach doesn't work for your specific game.
-
-## Key Features
-
-- **Pure C** - no C++ runtime, no external dependencies
-- **Simple INI config** - just list DLC IDs and names in `cream_api.ini`
-- **Two hooking methods** - LD_PRELOAD for simple cases, proxy replacement for everything else
-- **Debug logging** - optional file logging for troubleshooting (set `CREAMY_LOG=1`)
-- **Lightweight** - tiny binaries (~30KB LD_PRELOAD, ~300KB proxy)
-- **Cross-platform proxy** - generates both Linux `.so` and Windows `.dll` proxies
-- **Game-specific proxy** - a static `proxy.c` plus an auto-generated trampoline header built from the game's actual Steam API exports
 
 ## Building
 
